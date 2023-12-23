@@ -1,1 +1,1 @@
-Redis re-implementation in C
+Redis re-implementation in C++
