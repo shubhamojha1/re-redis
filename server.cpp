@@ -4,9 +4,11 @@
 #include <stdio.h>
 #include <errno.h>
 #include <unistd.h>
-#include <arpa/inet.h>
-#include <sys/socket.h>
-#include <netinet/ip.h>
+// For Unix/Linux
+// #include <arpa/inet.h> 
+// #include <sys/socket.h>
+#include <Winsock2.h>
+// #include <netinet/ip.h>
 
 
 static void msg (const char *msg){
