@@ -1,14 +1,6 @@
 // cmd: gcc -o client client.cpp -lws2_32 -lwsock32 -L $MinGW\lib; .\client
 #define _WIN32_WINNT 0x0600
 
-// #ifndef _WIN32_WINNT
-//     #define _WIN32_WINNT 0x0600
-// #elif _WIN32_WINNT < 0x0600
-//     #undef _WIN32_WINNT
-//     #define _WIN32_WINNT 0x0600
-// #endif
-
-
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
