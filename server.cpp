@@ -1,3 +1,5 @@
+#define _WIN32_WINNT 0x0501
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,8 +9,14 @@
 // For Unix/Linux
 // #include <arpa/inet.h> 
 // #include <sys/socket.h>
-#include <Winsock2.h>
 // #include <netinet/ip.h>
+
+#include <Winsock2.h>
+#include <Ws2tcpip.h>
+
+// Link with ws2_32.lib 
+// for networking functionality in Windows
+#pragma comment(lib, "Ws2_32.lib")
 
 
 static void msg (const char *msg){
@@ -16,8 +24,10 @@ static void msg (const char *msg){
 }
 
 static void die(const char *msg){
-    int err = errno;
+    // int err = errno;
+    int err = WSAGetLastError();
     fprintf(stderr, "[%d] %s\n", err, msg);
+    WSACleanup(); // terminates use of the Winsock 2 DLL
     abort();
 }
 static void do_something(int connfd){
@@ -34,14 +44,30 @@ static void do_something(int connfd){
 }
 
 int main(){
-    int fd = socket(AF_INET, SOCK_STREAM, 0); // from sys/socket
-    // passed to setsockopt()
-    if (fd < 0){
+
+    WSADATA wsaData; // WSADATA structure contains information about the Windows Sockets implementation.
+    int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
+    if (result != 0) {
+        die("WSAStartup failed");
+    }
+    SOCKET fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd == INVALID_SOCKET) {
         die("socket()");
     }
 
+    // // int fd = socket(AF_INET, SOCK_STREAM, 0); // from sys/socket.h
+    // // passed to setsockopt()
+    // if (fd < 0){
+    //     die("socket()");
+    // }
+
     int val = 1;
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &val, sizeof(val)); // returns 0 on successful completion else -1
+    // setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &val, sizeof(val)); // returns 0 on successful completion else -1
+    // if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&val, sizeof(val)) == SOCKET_ERROR) {
+
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&val, sizeof(val)) == SOCKET_ERROR) {
+        die("setsockopt()");
+    }
 
     // binding
     struct sockaddr_in addr = {};
@@ -62,16 +88,25 @@ int main(){
 
     while (true) {
         // accept connection
+        printf("SERVER RUNNING");
         struct sockaddr_in client_addr = {};
-        socklen_t socklen = sizeof(client_addr);
-        int connfd = accept(fd, (struct sockaddr*)&client_addr, &socklen);
-        if (connfd < 0) {
+        // socklen_t socklen = sizeof(client_addr);
+        int socklen = sizeof(client_addr);
+        SOCKET connfd = accept(fd, (struct sockaddr*)&client_addr, &socklen);
+        if (connfd == INVALID_SOCKET) {
             continue;
         }
+        // int connfd = accept(fd, (struct sockaddr*)&client_addr, &socklen);
+        // if (connfd < 0) {
+        //     continue;
+        // }
         // do something
         do_something(connfd);
-        close(connfd);
+        // close(connfd);
+        closesocket(connfd);
     }
+    closesocket(fd);
+    WSACleanup();
 
-    return 0
+    return 0;
 }
