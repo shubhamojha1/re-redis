@@ -1,4 +1,5 @@
-#define _WIN32_WINNT 0x0501
+// cmd: gcc -o server server.cpp -lws2_32 -lwsock32 -L $MinGW\lib; .\server
+#define _WIN32_WINNT 0x0600
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -32,15 +33,28 @@ static void die(const char *msg){
 }
 static void do_something(int connfd){
     char rbuf[64] = {};
-    ssize_t n = read(connfd, rbuf, sizeof(rbuf)-1);
-    if (n<0) {
-        msg("read() error");
-        return;
-    }
-    printf("client says: %s\n", rbuf);
+    // ssize_t n = read(connfd, rbuf, sizeof(rbuf)-1);
+    // if (n<0) {
+    //     msg("read() error");
+    //     return;
+    // }
+    // printf("client says: %s\n", rbuf);
 
-    char wbuf[] = "world";
-    write(connfd, wbuf, strlen(wbuf));
+    // char wbuf[] = "world";
+    // write(connfd, wbuf, strlen(wbuf));
+
+    int n = recv(connfd, rbuf, sizeof(rbuf)-1, 0);
+    if (n > 0) {
+        rbuf[n] = '\0'; // Null-terminate the string
+        printf("client says: %s\n", rbuf);
+
+    const char wbuf[] = "world";
+    send(connfd, wbuf, strlen(wbuf), 0);
+    } else if (n == 0) {
+        printf("The client closed the connection\n");
+    } else {
+        msg("recv() error");
+    }
 }
 
 int main(){
