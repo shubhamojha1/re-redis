@@ -62,7 +62,7 @@ static void do_something(int connfd){
     }
 }
 
-// Header format
+// Request format
 //  +-----+------+-----+------+-------
 // | len | msg1 | len | msg2 | more...
 //  +-----+------+-----+------+-------
@@ -97,7 +97,7 @@ static int32_t one_request(int connfd){
     len = (uint32_t)strlen(reply);
     memcpy(wbuf, &len, 4);
     memcpy(&wbuf[4], reply, len);
-    
+
     return write_all(connfd, wbuf, 4 + len);
 }
 
