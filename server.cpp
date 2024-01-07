@@ -62,6 +62,14 @@ static void do_something(int connfd){
     }
 }
 
+static int32_t read_full(int fd, char *buf, size_t n) {
+
+}
+
+static int32_t write_all(int fd, const char *buf, size_t n) {
+    
+}
+
 // Request format
 //  +-----+------+-----+------+-------
 // | len | msg1 | len | msg2 | more...
