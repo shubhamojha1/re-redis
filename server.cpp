@@ -19,6 +19,8 @@
 // for networking functionality in Windows
 #pragma comment(lib, "Ws2_32.lib")
 
+const size_t K_MAX_MSG = 4096;
+
 // For logging non-fatal messages
 static void msg (const char *msg){
     fprintf(stderr, "%s\n", msg);
@@ -60,6 +62,45 @@ static void do_something(int connfd){
     }
 }
 
+// Header format
+//  +-----+------+-----+------+-------
+// | len | msg1 | len | msg2 | more...
+//  +-----+------+-----+------+-------
+static int32_t one_request(int connfd){
+    // 4 bytes header
+    char rbuf[4 + K_MAX_MSG + 1]; // size of one request
+    errno = 0;
+    int32_t err = read_full(connfd, rbuf, 4);
+    if (err) {
+        if (errno == 0) {
+            msg("EOF");
+        } else {
+            msg("read() error");
+        }
+        return err;
+    }
+
+    uint32_t len = 0;
+    memcpy(&len, rbuf, 4); // assume little endian
+    if (len > K_MAX_MSG) {
+        msg("too long");
+        return -1;
+    }
+
+    // request body
+    rbuf[4 + len] = '\0';
+    printf("client says: %s\n", &rbuf[4]);
+
+    // reply using same protocol
+    const char reply[] = "world";
+    char wbuf[2 + sizeof(reply)];
+    len = (uint32_t)strlen(reply);
+    memcpy(wbuf, &len, 4);
+    memcpy(&wbuf[4], reply, len);
+    
+    return write_all(connfd, wbuf, 4 + len);
+}
+
 int main(){
 
     WSADATA wsaData; // WSADATA structure 
@@ -68,6 +109,7 @@ int main(){
     if (result != 0) {
         die("WSAStartup failed");
     }
+
     SOCKET fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd == INVALID_SOCKET) {
         die("socket()");
@@ -81,7 +123,6 @@ int main(){
 
     int val = 1;
     // setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &val, sizeof(val)); // returns 0 on successful completion else -1
-    // if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&val, sizeof(val)) == SOCKET_ERROR) {
 
     if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&val, sizeof(val)) == SOCKET_ERROR) {
         die("setsockopt()");
@@ -119,9 +160,17 @@ int main(){
         //     continue;
         // }
         // do something
-        do_something(connfd);
+
+        // do_something(connfd);
+        while (true) {
+            // serves only one client connection at once
+            int32_t err = one_request(connfd);
+            if (err) {
+                break;
+            }
+        }
         // close(connfd);
-        // closesocket(connfd);
+        closesocket(connfd); // for Windows
     }
     closesocket(fd);
     WSACleanup();
