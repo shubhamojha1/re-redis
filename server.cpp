@@ -19,18 +19,21 @@
 // for networking functionality in Windows
 #pragma comment(lib, "Ws2_32.lib")
 
-
+// For logging non-fatal messages
 static void msg (const char *msg){
     fprintf(stderr, "%s\n", msg);
 }
 
+// To handle fatal errors
 static void die(const char *msg){
     // int err = errno;
     int err = WSAGetLastError();
     fprintf(stderr, "[%d] %s\n", err, msg);
-    WSACleanup(); // terminates use of the Winsock 2 DLL
+    WSACleanup(); // terminates use of the Winsock 2 DLL by cleaning resources
     abort();
 }
+
+// To handle client connection
 static void do_something(int connfd){
     char rbuf[64] = {};
     // ssize_t n = read(connfd, rbuf, sizeof(rbuf)-1);
@@ -59,7 +62,8 @@ static void do_something(int connfd){
 
 int main(){
 
-    WSADATA wsaData; // WSADATA structure contains information about the Windows Sockets implementation.
+    WSADATA wsaData; // WSADATA structure 
+                    // contains information about the Windows Sockets implementation.
     int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
     if (result != 0) {
         die("WSAStartup failed");
@@ -102,7 +106,7 @@ int main(){
 
     while (true) {
         // accept connection
-        printf("SERVER RUNNING");
+        printf("-----\nSERVER RUNNING\n-----\n");
         struct sockaddr_in client_addr = {};
         // socklen_t socklen = sizeof(client_addr);
         int socklen = sizeof(client_addr);
@@ -117,7 +121,7 @@ int main(){
         // do something
         do_something(connfd);
         // close(connfd);
-        closesocket(connfd);
+        // closesocket(connfd);
     }
     closesocket(fd);
     WSACleanup();
