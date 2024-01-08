@@ -84,25 +84,28 @@ static int32_t query(SOCKET fd, const char *text) {
 
     // 4 bytes header
     char rbuf[4 + K_MAX_MSG + 1];
-    errno = 0;
+    // errno = 0; use WSAGetLastError() instead
     int32_t err = read_full(fd, rbuf, 4);
     if (err) {
-        if (!errno) {
-            msg("EOF");
-        } else {
-            msg("read() error");
-        }
+        fprintf(stderr, "read_full() error: %d\n", WSAGetLastError());
         return err;
+        // if (!errno) {
+        //     msg("EOF");
+        // } else {
+        //     msg("read() error");
+        // }
+        // return err;
     }
     memcpy(&len, rbuf, 4); // assuming little endian
     if (len > K_MAX_MSG) {
-        msg("too long");
+        msg("Received message too long");
         return -1;
     }
     // reply body
     err = read_full(fd, &rbuf[4], len);
     if (err) {
-        msg("read() error");
+        // msg("read() error");
+        fprintf(stderr, "(reply) read_full() error: %d\n", WSAGetLastError());
         return err;
     }
 
@@ -178,7 +181,8 @@ int main() {
     }
 
     L_DONE:
-        close(fd);
+        // close(fd);
+        closesocket(fd);
         return 0;
 
 
@@ -190,17 +194,17 @@ int main() {
     // if (n < 0) {
     //     die("read");
     // }
-    int n = recv(fd, rbuf, sizeof(rbuf), 0);
-    if (n > 0) {
-        rbuf[n] = '\0';
-    }
-    else if (n == 0)
-        printf("The server closed the connection\n");
-    else
-        die("recv");
-    printf("server says: %s\n", rbuf);
-    closesocket(fd);
-    WSACleanup();
-    // close(fd);
-    return 0;
+    // int n = recv(fd, rbuf, sizeof(rbuf), 0);
+    // if (n > 0) {
+    //     rbuf[n] = '\0';
+    // }
+    // else if (n == 0)
+    //     printf("The server closed the connection\n");
+    // else
+    //     die("recv");
+    // printf("server says: %s\n", rbuf);
+    // closesocket(fd);
+    // WSACleanup();
+    // // close(fd);
+    // return 0;
 }

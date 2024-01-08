@@ -68,8 +68,16 @@ static int32_t read_full(SOCKET fd, char *buf, size_t n) { // (int fd)
     while (n > 0) {
         // ssize_t rv = read(fd, buf, n);
         int rv = recv(fd, buf, n, 0);
-        if (rv <= 0) {
-            return -1; // error or unexpected EOF
+        // if (rv <= 0) {
+        //     return -1; // error or unexpected EOF
+        // }
+        if (rv == 0) {
+            return -2;
+        } else if(rv < 0) {
+            // An error occurred
+            int err = WSAGetLastError();
+            fprintf(stderr, "recv failed with error: %d\n", err);
+            return -1;
         }
         assert((size_t)rv <= n);
         n -= (size_t)rv;
@@ -99,23 +107,35 @@ static int32_t write_all(SOCKET fd, const char *buf, size_t n) { // (int fd)
 static int32_t one_request(SOCKET connfd){ // (int connfd)
     // 4 bytes header
     char rbuf[4 + K_MAX_MSG + 1]; // size of one request
-    errno = 0;
+    // errno = 0;
     int32_t err = read_full(connfd, rbuf, 4);
-    if (err) {
-        if (errno == 0) {
-            msg("EOF");
-        } else {
-            msg("read() error");
-        }
+    if (err == -2) {
+        return -2;
+        // msg(" --> read_full() error");
+        // if (errno == 0) {
+        //     msg("EOF");
+        // } else {
+        //     msg("read() error");
+        // }
+        // return err;
+    } else if (err) {
         return err;
     }
 
     uint32_t len = 0;
     memcpy(&len, rbuf, 4); // assume little endian
+    // printf("len--> %d\n", len);
     if (len > K_MAX_MSG) {
         msg("too long");
         return -1;
     }
+
+    err = read_full(connfd, &rbuf[4], len);
+    if (err) {
+        msg("read() error");
+        return err;
+    }
+    
 
     // request body
     rbuf[4 + len] = '\0';
@@ -195,7 +215,16 @@ int main(){
         while (true) {
             // serves only one client connection at once
             int32_t err = one_request(connfd);
-            if (err) {
+            // if (err) {
+            //     break;
+            // }
+
+            if (err == -2) {
+                msg("Client closed connection.");
+                closesocket(connfd);
+                break; 
+            } else if (err) {
+                closesocket(connfd);
                 break;
             }
         }
