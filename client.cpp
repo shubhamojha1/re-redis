@@ -21,12 +21,17 @@
 // for networking functionality in Windows
 #pragma comment(lib, "Ws2_32.lib")
 
+const size_t K_MAX_MSG = 4096;
+
 // static void die(const char *msg){
 //     int err = errno;
 //     fprintf(stderr, "[%d] %s\n", err, msg);
 //     abort();
 
 // }
+static void msg (const char *msg){
+    fprintf(stderr, "%s\n", msg);
+}
 
 static void die(const char *msg){
     // int err = errno;
@@ -64,7 +69,7 @@ static int32_t write_all(SOCKET fd, const char *buf, size_t n) { // (int fd)
     return 0;
 }
 
-static int32_t query(int fd, const char *text) {
+static int32_t query(SOCKET fd, const char *text) {
     uint32_t len = (uint32_t)strlen(text);
     if (len > K_MAX_MSG) {
         return -1;
@@ -95,6 +100,16 @@ static int32_t query(int fd, const char *text) {
         return -1;
     }
     // reply body
+    err = read_full(fd, &rbuf[4], len);
+    if (err) {
+        msg("read() error");
+        return err;
+    }
+
+    // do something equivalent
+    rbuf[4 + len] = '\0';
+    printf("server says: %s\n", &rbuf[4]);
+    return 0;
 }
 
 int main() {
