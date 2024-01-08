@@ -1,4 +1,5 @@
-// cmd: gcc -o server server.cpp -lws2_32 -lwsock32 -L $MinGW\lib; .\server
+// cmd: 
+// gcc -o server server.cpp -lws2_32 -lwsock32 -L $MinGW\lib; .\server
 #define _WIN32_WINNT 0x0600
 
 #include <stdint.h>
@@ -7,6 +8,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <unistd.h>
+#include <assert.h>
 // For Unix/Linux
 // #include <arpa/inet.h> 
 // #include <sys/socket.h>
@@ -62,19 +64,39 @@ static void do_something(int connfd){
     }
 }
 
-static int32_t read_full(int fd, char *buf, size_t n) {
-
+static int32_t read_full(SOCKET fd, char *buf, size_t n) { // (int fd)
+    while (n > 0) {
+        // ssize_t rv = read(fd, buf, n);
+        int rv = recv(fd, buf, n, 0);
+        if (rv <= 0) {
+            return -1; // error or unexpected EOF
+        }
+        assert((size_t)rv <= n);
+        n -= (size_t)rv;
+        buf += rv;
+    }
+    return 0;
 }
 
-static int32_t write_all(int fd, const char *buf, size_t n) {
-    
+static int32_t write_all(SOCKET fd, const char *buf, size_t n) { // (int fd)
+    while (n > 0){
+        // ssize_t rv = write(fd, buf, n);
+        int rv = send(fd, buf, n, 0);
+        if (rv <= 0) {
+            return -1;
+        }
+        assert((size_t)rv <= n);
+        n -= (size_t)rv;
+        buf += rv;
+    }
+    return 0;
 }
 
 // Request format
 //  +-----+------+-----+------+-------
 // | len | msg1 | len | msg2 | more...
 //  +-----+------+-----+------+-------
-static int32_t one_request(int connfd){
+static int32_t one_request(SOCKET connfd){ // (int connfd)
     // 4 bytes header
     char rbuf[4 + K_MAX_MSG + 1]; // size of one request
     errno = 0;
