@@ -60,7 +60,7 @@ static int32_t write_all(SOCKET fd, const char *buf, size_t n) { // (int fd)
         // ssize_t rv = write(fd, buf, n);
         int rv = send(fd, buf, n, 0);
         if (rv <= 0) {
-            return -1;
+            return -1; // error
         }
         assert((size_t)rv <= n);
         n -= (size_t)rv;
@@ -126,6 +126,7 @@ int main() {
     if (result != 0) {
         die("WSAStartup failed");
     }
+    
     SOCKET fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd == INVALID_SOCKET) {
         die("socket()");

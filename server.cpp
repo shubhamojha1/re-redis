@@ -23,6 +23,24 @@
 
 const size_t K_MAX_MSG = 4096;
 
+enum {
+    STATE_REQ = 0,
+    STATE_RES = 1,
+    STATE_END = 2, // mark the connection for deletion
+}
+
+struct Conn {
+    int fd = -1;
+    uint32_t state = 0; // either STATE_REQ or STATE_RES
+    // buffer for reading
+    size_t rbuf_size = 0;
+    uint8_t rbuf[4 + K_MAX_MSG];
+    // buffer for writing
+    size_t wbuf_size = 0;
+    size_t wbuf_sent = 0;
+    uint8_t wbuf[4 + K_MAX_MSG];
+};
+
 // For logging non-fatal messages
 static void msg (const char *msg){
     fprintf(stderr, "%s\n", msg);
@@ -194,6 +212,15 @@ int main(){
     if (rv) {
         die("listen()");
     }
+
+    // map of all client connections, keyed by fd
+    std::vector<Conn *> fd2conn;
+
+    // set the listen fd to nonblocking mode
+    fd_set_nb(fd);
+
+    // the event loop
+    std::vector<struct pollfd> poll_args;
 
     while (true) {
         // accept connection
