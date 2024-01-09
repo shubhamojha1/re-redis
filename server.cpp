@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <assert.h>
+#include <vector>
 // For Unix/Linux
 // #include <arpa/inet.h> 
 // #include <sys/socket.h>
@@ -225,13 +226,15 @@ int main(){
     while (true) {
         // accept connection
         printf("-----\nSERVER RUNNING\n-----\n");
-        struct sockaddr_in client_addr = {};
-        // socklen_t socklen = sizeof(client_addr);
-        int socklen = sizeof(client_addr);
-        SOCKET connfd = accept(fd, (struct sockaddr*)&client_addr, &socklen);
-        if (connfd == INVALID_SOCKET) {
-            continue;
-        }
+
+        // struct sockaddr_in client_addr = {};
+        // // socklen_t socklen = sizeof(client_addr);
+        // int socklen = sizeof(client_addr);
+        // SOCKET connfd = accept(fd, (struct sockaddr*)&client_addr, &socklen);
+        // if (connfd == INVALID_SOCKET) {
+        //     continue;
+        // }
+
         // int connfd = accept(fd, (struct sockaddr*)&client_addr, &socklen);
         // if (connfd < 0) {
         //     continue;
@@ -239,27 +242,76 @@ int main(){
         // do something
 
         // do_something(connfd);
-        while (true) {
-            // serves only one client connection at once
-            int32_t err = one_request(connfd);
-            // if (err) {
-            //     break;
-            // }
+    //     while (true) {
+    //         // serves only one client connection at once
+    //         int32_t err = one_request(connfd);
+    //         // if (err) {
+    //         //     break;
+    //         // }
 
-            if (err == -2) {
-                msg("Client closed connection.");
-                closesocket(connfd);
-                break; 
-            } else if (err) {
-                closesocket(connfd);
-                break;
+    //         if (err == -2) {
+    //             msg("Client closed connection.");
+    //             closesocket(connfd);
+    //             break; 
+    //         } else if (err) {
+    //             closesocket(connfd);
+    //             break;
+    //         }
+    //     }
+    //     // close(connfd);
+    //     closesocket(connfd); // for Windows
+    // }
+    // closesocket(fd);
+    // WSACleanup();
+
+    // ----- EVENT LOOP IMPLEMENTATION -----
+
+    // prepare args of the poll()
+        poll_args.clear()
+        // listening fd put in first position, for convenience
+        struct pollfd pfd = {fd, POLLIN, 0};
+        poll_args.push_back(pfd);
+        
+        // connection fds
+        for (Conn *conn: fd2conn) {
+            if(!conn) {
+                continue;
+            }
+            struct pollfd pfd = {};
+            pfd.fd = conn->fd;
+            pfd.events = (conn->state == STATE_REQ) ? POLLIN : POLLOUT;
+            pfd.events = pfd.events | POLLERR;
+            poll_args.push_back(pfd);
+        }
+
+        // poll for active fds
+        // timeout arg not important
+        int rv = poll(poll_args.data(), (nfds_t)poll_args.size(), 1000);
+        if (rv < 0) {
+            die("poll");
+        }
+
+        // process active connections
+        for (size_t i = 1; i < poll_args.size(); i++) {
+            if (poll_args[i].revents) {
+                Conn *conn = fd2conn[poll_args[i].fd];
+                connection_io(conn);
+                if (conn->state == STATE_END) {
+                    // client closed normally, or something unexpected happened
+                    // destroy connection
+                    fd2conn[conn->fd] = NULL;
+                    (void)close(conn->fd);
+                    free(conn);
+                }
             }
         }
-        // close(connfd);
-        closesocket(connfd); // for Windows
+
+        // try to accept a new connection if listening fd is active
+        if (poll_args[0].revents) {
+            (void)accept_new_conn(fd2conn, fd);
+
+        }
     }
-    closesocket(fd);
-    WSACleanup();
 
     return 0;
 }
