@@ -157,8 +157,6 @@ static int32_t write_all(SOCKET fd, const char *buf, size_t n) { // (int fd)
     }
     return 0;
 }
-}
-}
 
 // Request format
 //  +-----+------+-----+------+-------
@@ -209,6 +207,42 @@ static int32_t one_request(SOCKET connfd){ // (int connfd)
     memcpy(&wbuf[4], reply, len);
 
     return write_all(connfd, wbuf, 4 + len);
+}
+
+static bool try_fill_buffer(Conn *conn) {
+    // try to fill the buffer
+    assert(conn->rbuf_size < sizeof(conn->rbuf));
+    ssize_t rv = 0;
+    do {
+        size_t cap = sizeof(conn-> rbuf) - conn-> rbuf_size;
+        rv = read(conn->fd, &conn->rbuf[conn->rbuf_size], cap);
+    } while(rv < 0 && errno == EINTR);
+
+    if (rv < 0) {
+        msg("read() error");
+        conn->state = STATE_END;
+        return false;
+    }
+    if (rv == 0) {
+        if (conn->rbuf_size > 0) {
+            msg("unexpected EOF");
+        } else {
+            msg("EOF");
+        }
+        conn->state = STATE_END;
+        return false;
+    }
+
+    conn->rbuf_size += (size_t)rv;
+    assert(conn->rbuf_size <= sizeof(conn->rbuf));
+
+    // Try to process requests one by one
+    while(try_one_request(conn)) {}
+    return (conn->state == STATE_REQ);
+}
+
+static void state_req(Conn *conn) {
+    while(try_fill_buffer(conn)) {}
 }
 
 // state machine for client connections
