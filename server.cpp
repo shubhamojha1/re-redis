@@ -211,6 +211,17 @@ static int32_t one_request(SOCKET connfd){ // (int connfd)
     return write_all(connfd, wbuf, 4 + len);
 }
 
+// state machine for client connections
+static void connection_io(Conn *conn) {
+    if (conn->state == STATE_REQ) {
+        state_req(conn); 
+    } else if(conn->state == STATE_RES) {
+        state_res(conn);
+    } else {
+        assert(0); // not expected
+    }
+}
+
 int main(){
 
     WSADATA wsaData; // WSADATA structure 
