@@ -56,32 +56,41 @@ static void die(const char *msg){
     abort();
 }
 
-// To handle client connection
-static void do_something(int connfd){
-    char rbuf[64] = {};
-    // ssize_t n = read(connfd, rbuf, sizeof(rbuf)-1);
-    // if (n<0) {
-    //     msg("read() error");
-    //     return;
-    // }
-    // printf("client says: %s\n", rbuf);
-
-    // char wbuf[] = "world";
-    // write(connfd, wbuf, strlen(wbuf));
-
-    int n = recv(connfd, rbuf, sizeof(rbuf)-1, 0);
-    if (n > 0) {
-        rbuf[n] = '\0'; // Null-terminate the string
-        printf("client says: %s\n", rbuf);
-
-    const char wbuf[] = "world";
-    send(connfd, wbuf, strlen(wbuf), 0);
-    } else if (n == 0) {
-        printf("The client closed the connection\n");
-    } else {
-        msg("recv() error");
+static void conn_put()(std::vector<Conn *> &fd2conn, struct Conn *conn) {
+    if (fd2conn.size() <= (size_t)conn->fd) {
+        fd2conn.resize(conn->fd+1); // resize vector
     }
+    fd2conn[conn->fd] = conn; // put connection
 }
+
+
+
+// To handle client connection
+// static void do_something(int connfd){
+//     char rbuf[64] = {};
+//     // ssize_t n = read(connfd, rbuf, sizeof(rbuf)-1);
+//     // if (n<0) {
+//     //     msg("read() error");
+//     //     return;
+//     // }
+//     // printf("client says: %s\n", rbuf);
+
+//     // char wbuf[] = "world";
+//     // write(connfd, wbuf, strlen(wbuf));
+
+//     int n = recv(connfd, rbuf, sizeof(rbuf)-1, 0);
+//     if (n > 0) {
+//         rbuf[n] = '\0'; // Null-terminate the string
+//         printf("client says: %s\n", rbuf);
+
+//     const char wbuf[] = "world";
+//     send(connfd, wbuf, strlen(wbuf), 0);
+//     } else if (n == 0) {
+//         printf("The client closed the connection\n");
+//     } else {
+//         msg("recv() error");
+//     }
+// }
 
 static int32_t read_full(SOCKET fd, char *buf, size_t n) { // (int fd)
     while (n > 0) {
