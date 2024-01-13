@@ -63,6 +63,33 @@ static void conn_put()(std::vector<Conn *> &fd2conn, struct Conn *conn) {
     fd2conn[conn->fd] = conn; // put connection
 }
 
+static int32_t accept_new_conn(std::vector<Conn *> &fd2conn, SOCKET fd) {
+    struct sockaddr_in client_addr = {};
+    int socklen = sizeof(client_addr);
+    SOCKET connfd = accept(fd, (struct sockaddr *)&client_addr, &socklen); // accept 
+    if (connfd == INVALID_SOCKET) {
+        msg("accept() error");
+        return -1;
+    }
+
+    // set the new connection fd to nonblocking mode
+    fd_set_nb(connfd); 
+    // creating the struct Conn
+    struct Conn *conn = (struct Conn *)malloc(sizeof(struct Conn));
+    if (!conn) {
+        close(connfd);
+        return -1;
+    }
+
+    conn->fd = connfd;
+    conn->state = STATE_REQ;
+    conn->rbuf_size = 0;
+    conn->wbuf_size = 0;
+    conn->wbuf_sent = 0;
+    conn_put(fd2conn, conn);
+    return 0;
+}
+
 
 
 // To handle client connection
@@ -92,7 +119,7 @@ static void conn_put()(std::vector<Conn *> &fd2conn, struct Conn *conn) {
 //     }
 // }
 
-static int32_t read_full(SOCKET fd, char *buf, size_t n) { // (int fd)
+static int32_t read_full(SOCKET fd, char *buf, size_t n) {
     while (n > 0) {
         // ssize_t rv = read(fd, buf, n);
         int rv = recv(fd, buf, n, 0);
@@ -114,6 +141,9 @@ static int32_t read_full(SOCKET fd, char *buf, size_t n) { // (int fd)
     return 0;
 }
 
+static int32_t write_all(SOCKET fd, const char *buf, size_t n) {
+}
+
 static int32_t write_all(SOCKET fd, const char *buf, size_t n) { // (int fd)
     while (n > 0){
         // ssize_t rv = write(fd, buf, n);
@@ -126,6 +156,8 @@ static int32_t write_all(SOCKET fd, const char *buf, size_t n) { // (int fd)
         buf += rv;
     }
     return 0;
+}
+}
 }
 
 // Request format
