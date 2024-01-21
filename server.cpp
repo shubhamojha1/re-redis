@@ -42,6 +42,9 @@ struct Conn {
     uint8_t wbuf[4 + K_MAX_MSG];
 };
 
+static void state_req(Conn *conn);
+static void state_res(Conn *conn);
+
 // For logging non-fatal messages
 static void msg (const char *msg){
     fprintf(stderr, "%s\n", msg);
@@ -283,8 +286,38 @@ static bool try_fill_buffer(Conn *conn) {
     return (conn->state == STATE_REQ);
 }
 
+static bool try_flush_buffer(Conn *conn) {
+    ssize_t rv = 0;
+    do {
+        ssize_t remain = conn->wbuf_size - conn->wbuf_sent;
+        rv = write(conn->fd, &conn->wbuf[conn->wbuf_sent], remain);
+        if (rv < 0 && errno == EAGAIN)
+            return false;
+    }
+    if (rv < 0) {
+        msg("write() error");
+        conn->state = STATE_END;
+        return false;
+    }
+    conn->wbuf_sent += (size_t)rv;
+    assert(conn->wbuf_sent <= conn->wbuf_size);
+    if (conn->wbuf_sent == conn->wbuf_size) {
+        // response fully sent, change state back
+        conn->state = STATE_REQ;
+        conn->wbuf_sent = 0;
+        conn->wbuf_size = 0;
+        return false;
+    }
+    // still got some data in wbuf, could try to write again
+    return true;
+}
+
 static void state_req(Conn *conn) {
     while(try_fill_buffer(conn)) {}
+}
+
+static void state_res(Conn *conn) {
+    while (try_flush_buffer(conn)) {}
 }
 
 // state machine for client connections
