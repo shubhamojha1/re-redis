@@ -90,8 +90,6 @@ static int32_t accept_new_conn(std::vector<Conn *> &fd2conn, SOCKET fd) {
     return 0;
 }
 
-
-
 // To handle client connection
 // static void do_something(int connfd){
 //     char rbuf[64] = {};
@@ -209,6 +207,49 @@ static int32_t one_request(SOCKET connfd){ // (int connfd)
     return write_all(connfd, wbuf, 4 + len);
 }
 
+static bool try_one_request(Conn *conn) {
+    // try to parse request from the buffer
+    if (conn->rbuf_size < 4) {
+        // not enough data in the buffer. 
+        return false;
+    }
+    uint32_t len = 0;
+    memcpy(&len, &conn->rbuf[0], 4);
+    if (len > K_MAX_MSG) {
+        msg("too long");
+        conn->state = STATE_END;
+        return false;
+    }
+    if (4 + len > conn->rbuf_size) {
+        // not enough data in buffer.
+        return false; 
+    }
+
+    // got one request, do something with it
+    printf("client says: %.*s\n", len, &conn->rbuf[4]);
+
+    // generating echoing response
+    memcpy(&conn->wbuf[0], &len, 4);
+    memcpy(&conn->wbuf[4], &conn->rbuf, len);
+    conn->wbuf_size = 4 + len;
+
+    // remove the request from buffer
+    /**
+     * @brief frequent memmove is inefficient
+            need better handling for production code
+     * 
+     */
+    size_t remain = conn->rbuf_size - 4 - len;
+    if (remain) {
+        memmove(conn->rbuf, &conn->rbuf[4 + len], remain);
+    }
+    conn->rbuf_size = remain;
+
+    // change state
+    conn->state - STATE_RES;
+    state_res(conn);
+}
+
 static bool try_fill_buffer(Conn *conn) {
     // try to fill the buffer
     assert(conn->rbuf_size < sizeof(conn->rbuf));
@@ -237,6 +278,7 @@ static bool try_fill_buffer(Conn *conn) {
     assert(conn->rbuf_size <= sizeof(conn->rbuf));
 
     // Try to process requests one by one
+    // "pipelining"
     while(try_one_request(conn)) {}
     return (conn->state == STATE_REQ);
 }
