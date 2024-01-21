@@ -59,6 +59,23 @@ static void die(const char *msg){
     abort();
 }
 
+static void fd_set_nb(int fd) {
+    errno = 0;
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (errno) {
+        die("fcntl error");
+        return;
+    }
+
+    flags |= O_NONBLOCK;
+
+    errno = 0;
+    (void)fcntl(fd, F_SETFL, flags);
+    if (errno) {
+        die("fcntl error");
+    }
+}
+
 static void conn_put()(std::vector<Conn *> &fd2conn, struct Conn *conn) {
     if (fd2conn.size() <= (size_t)conn->fd) {
         fd2conn.resize(conn->fd+1); // resize vector
@@ -251,6 +268,9 @@ static bool try_one_request(Conn *conn) {
     // change state
     conn->state - STATE_RES;
     state_res(conn);
+
+    // continue outer loop if the request was fully processed
+    return (conn->state == STATE_REQ);
 }
 
 static bool try_fill_buffer(Conn *conn) {
@@ -259,8 +279,8 @@ static bool try_fill_buffer(Conn *conn) {
     ssize_t rv = 0;
     do {
         size_t cap = sizeof(conn-> rbuf) - conn-> rbuf_size;
-        rv = read(conn->fd, &conn->rbuf[conn->rbuf_size], cap);
-    } while(rv < 0 && errno == EINTR);
+        rv = recv(conn->fd, &conn->rbuf[conn->rbuf_size], cap, 0);
+    } while(rv < 0 && WSAGetLastError() == WSAEINTR);
 
     if (rv < 0) {
         msg("read() error");
@@ -290,10 +310,13 @@ static bool try_flush_buffer(Conn *conn) {
     ssize_t rv = 0;
     do {
         ssize_t remain = conn->wbuf_size - conn->wbuf_sent;
-        rv = write(conn->fd, &conn->wbuf[conn->wbuf_sent], remain);
-        if (rv < 0 && errno == EAGAIN)
+        rv = send(conn->fd, &conn->wbuf[conn->wbuf_sent], remain, 0);
+        
+    } while (rv < 0 && errno == WSAEINTR);
+
+    if (rv < 0 && WSAGetLastError() == WSAEWOULDBLOCK)
             return false;
-    }
+    
     if (rv < 0) {
         msg("write() error");
         conn->state = STATE_END;
