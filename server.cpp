@@ -1,6 +1,11 @@
 // cmd: 
-// gcc -o server server.cpp -lws2_32 -lwsock32 -L $MinGW\lib; .\server
-#define _WIN32_WINNT 0x0600
+// (wont work anymore) gcc -o server server.cpp -lws2_32 -lwsock32 -L $MinGW\lib; .\server
+// g++ -I%BOOST_ROOT% -L%BOOST_ROOT%\stage\lib -o server server.cpp -lwsock32 -lws2_32; ./server
+// #define _WIN32_WINNT 0x0601
+#define _WIN32_WINNT _WIN32_WINNT_WIN10
+
+#include <Winsock2.h>
+#include <Ws2tcpip.h>
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -14,9 +19,8 @@
 // #include <arpa/inet.h> 
 // #include <sys/socket.h>
 // #include <netinet/ip.h>
+// #include <poll.h>
 
-#include <Winsock2.h>
-#include <Ws2tcpip.h>
 
 // Link with ws2_32.lib 
 // for networking functionality in Windows
@@ -28,7 +32,7 @@ enum {
     STATE_REQ = 0,
     STATE_RES = 1,
     STATE_END = 2, // mark the connection for deletion
-}
+};
 
 struct Conn {
     int fd = -1;
@@ -56,27 +60,33 @@ static void die(const char *msg){
     int err = WSAGetLastError();
     fprintf(stderr, "[%d] %s\n", err, msg);
     WSACleanup(); // terminates use of the Winsock 2 DLL by cleaning resources
-    abort();
+    // abort();
+    exit(EXIT_FAILURE); // Exit the program
 }
 
-static void fd_set_nb(int fd) {
-    errno = 0;
-    int flags = fcntl(fd, F_GETFL, 0);
-    if (errno) {
-        die("fcntl error");
-        return;
-    }
+static void fd_set_nb(SOCKET fd) {
+    // errno = 0;
+    // int flags = fcntl(fd, F_GETFL, 0);
+    // if (errno) {
+    //     die("fcntl error");
+    //     return;
+    // }
 
-    flags |= O_NONBLOCK;
+    // flags |= O_NONBLOCK;
 
-    errno = 0;
-    (void)fcntl(fd, F_SETFL, flags);
-    if (errno) {
-        die("fcntl error");
+    // errno = 0;
+    // (void)fcntl(fd, F_SETFL, flags);
+    // if (errno) {
+    //     die("fcntl error");
+    // }
+
+    u_long mode = 1;
+    if (ioctlsocket(fd, FIONBIO, &mode) == SOCKET_ERROR) {
+        die("Failed to set non-blocking mode for socket");
     }
 }
 
-static void conn_put()(std::vector<Conn *> &fd2conn, struct Conn *conn) {
+static void conn_put(std::vector<Conn *> &fd2conn, struct Conn *conn) {
     if (fd2conn.size() <= (size_t)conn->fd) {
         fd2conn.resize(conn->fd+1); // resize vector
     }
@@ -95,7 +105,8 @@ static int32_t accept_new_conn(std::vector<Conn *> &fd2conn, SOCKET fd) {
     // set the new connection fd to nonblocking mode
     fd_set_nb(connfd); 
     // creating the struct Conn
-    struct Conn *conn = (struct Conn *)malloc(sizeof(struct Conn));
+    // struct Conn *conn = (struct Conn *)malloc(sizeof(struct Conn));
+    struct Conn *conn = new Conn;
     if (!conn) {
         close(connfd);
         return -1;
@@ -159,8 +170,6 @@ static int32_t read_full(SOCKET fd, char *buf, size_t n) {
     return 0;
 }
 
-static int32_t write_all(SOCKET fd, const char *buf, size_t n) {
-}
 
 static int32_t write_all(SOCKET fd, const char *buf, size_t n) { // (int fd)
     while (n > 0){
@@ -279,7 +288,7 @@ static bool try_fill_buffer(Conn *conn) {
     ssize_t rv = 0;
     do {
         size_t cap = sizeof(conn-> rbuf) - conn-> rbuf_size;
-        rv = recv(conn->fd, &conn->rbuf[conn->rbuf_size], cap, 0);
+        rv = recv(conn->fd, (char *)&conn->rbuf[conn->rbuf_size], cap, 0);
     } while(rv < 0 && WSAGetLastError() == WSAEINTR);
 
     if (rv < 0) {
@@ -310,7 +319,7 @@ static bool try_flush_buffer(Conn *conn) {
     ssize_t rv = 0;
     do {
         ssize_t remain = conn->wbuf_size - conn->wbuf_sent;
-        rv = send(conn->fd, &conn->wbuf[conn->wbuf_sent], remain, 0);
+        rv = send(conn->fd, (char *)&conn->wbuf[conn->wbuf_sent], remain, 0);
         
     } while (rv < 0 && errno == WSAEINTR);
 
@@ -365,7 +374,7 @@ int main(){
 
     SOCKET fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd == INVALID_SOCKET) {
-        die("socket()");
+        die("socket() failed");
     }
 
     // // int fd = socket(AF_INET, SOCK_STREAM, 0); // from sys/socket.h
@@ -382,20 +391,32 @@ int main(){
     }
 
     // binding
-    struct sockaddr_in addr = {};
-    addr.sin_family = AF_INET;
-    addr.sin_port = ntohs(1234);
-    addr.sin_addr.s_addr = ntohl(0); // wildcard address 0.0.0.0
+    // struct sockaddr_in addr = {};
+    // addr.sin_family = AF_INET;
+    // addr.sin_port = ntohs(1234);
+    // addr.sin_addr.s_addr = ntohl(0); // wildcard address 0.0.0.0
 
-    int rv = bind(fd, (const sockaddr*)&addr, sizeof(addr));
-    if (rv) {
-        die("bind()");
+    // int rv = bind(fd, (const sockaddr*)&addr, sizeof(addr));
+    // if (rv) {
+    //     die("bind()");
+    // }
+
+    // // listen for connections
+    // rv = listen(fd, SOMAXCONN);
+    // if (rv) {
+    //     die("listen()");
+    // }
+
+    sockaddr_in service;
+    service.sin_family = AF_INET;
+    service.sin_addr.s_addr = inet_addr("127.0.0.1");
+    service.sin_port = htons(9376);
+    if (bind(fd, (SOCKADDR*)&service, sizeof(service)) == SOCKET_ERROR) {
+        die("bind() failed");
     }
 
-    // listen for connections
-    rv = listen(fd, SOMAXCONN);
-    if (rv) {
-        die("listen()");
+    if (listen(fd, SOMAXCONN) == SOCKET_ERROR) {
+        die("listen() failed");
     }
 
     // map of all client connections, keyed by fd
@@ -405,7 +426,16 @@ int main(){
     fd_set_nb(fd);
 
     // the event loop
-    std::vector<struct pollfd> poll_args;
+    // std::vector<struct pollfd> poll_args;
+
+
+    typedef struct pollfd {
+    SOCKET fd;
+    short events;
+    short revents;
+    } WSAPOLLFD, *PWSAPOLLFD, FAR *LPWSAPOLLFD;
+
+    std::vector<WSAPOLLFD> poll_args;
 
     while (true) {
         // accept connection
@@ -451,29 +481,52 @@ int main(){
     // ----- EVENT LOOP IMPLEMENTATION -----
 
     // prepare args of the poll()
-        poll_args.clear()
+        poll_args.clear();
         // listening fd put in first position, for convenience
-        struct pollfd pfd = {fd, POLLIN, 0};
-        poll_args.push_back(pfd);
+        // struct pollfd pfd = {fd, POLLIN, 0};
+        WSAPOLLFD listen_sock_pollfd = {fd, FD_READ, 0};
+        // listen_sock_pollfd.fd = fd;
+        // POLLIN (unix) <-> FD_READ (windows)
+        // listen_sock_pollfd.events = POLLIN;
+        poll_args.push_back(listen_sock_pollfd);
         
         // connection fds
         for (Conn *conn: fd2conn) {
             if(!conn) {
                 continue;
             }
-            struct pollfd pfd = {};
+            // struct pollfd pfd = {};
+            WSAPOLLFD pfd = {};
             pfd.fd = conn->fd;
-            pfd.events = (conn->state == STATE_REQ) ? POLLIN : POLLOUT;
-            pfd.events = pfd.events | POLLERR;
+            // pfd.events = (conn->state == STATE_REQ) ? POLLIN : POLLOUT;
+            pfd.events = (conn->state == STATE_REQ) ? FD_READ : FD_WRITE;
+            // POLLOUT (unix) <-> FD_WRITE (windows)
+            // pfd.events = pfd.events | POLLERR;
+            pfd.events = pfd.events | FD_CLOSE;
+            // POLLERR (unix) <-> FD_CLOSE (windows)
             poll_args.push_back(pfd);
         }
 
         // poll for active fds
-        // timeout arg not important
-        int rv = poll(poll_args.data(), (nfds_t)poll_args.size(), 1000);
-        if (rv < 0) {
-            die("poll");
-        }
+        // timeout arg not important (need to check)
+        int timeout = 1000;
+        // int rv = poll(poll_args.data(), (nfds_t)poll_args.size(), 1000);
+
+        // int rv = WSAPoll(poll_args.data(), (ULONG)poll_args.size(), timeout);
+        // if (rv < 0) {
+        //     die("WSAPoll failed");
+        // }
+         fd_set readSet;
+         FD_ZERO(&readSet);
+         FD_SET(fd, &readSet);
+
+        struct timeval tv;
+        tv.tv_sec = 10;
+        tv.tv_usec = 0;
+
+        int rv = select(fd + 1, &readSet, NULL, NULL, &tv);
+        if(rv<0)
+            die("select() failed");
 
         // process active connections
         for (size_t i = 1; i < poll_args.size(); i++) {
@@ -496,6 +549,11 @@ int main(){
 
         }
     }
-
+    WSACleanup();
     return 0;
 }
+
+
+// // 
+// g++ -D_WIN32_WINNT=0x0601 -I%BOOST_ROOT% -L%BOOST_ROOT%\stage\lib -o server server.cpp -lwsock32 -lws2_32 
+// -lboost_system-mgw48-mt-d-1_55
