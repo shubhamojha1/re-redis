@@ -238,6 +238,33 @@ static int32_t one_request(SOCKET connfd){ // (int connfd)
     return write_all(connfd, wbuf, 4 + len);
 }
 
+// 3 commands:  (get, set, del)
+static int32_t do_request(
+    const uint8_t *req, uint32_t reqlen,
+     uint32_t *rescode, uint8_t *res, uint32_t *reslen
+){
+    std::vector<std::string> cmd;
+    if (0!= parse_req(req, reqlen, cmd)){
+        msg("bad request");
+        return -1;
+    }
+    if (cmd.size() == 2 && cmd_is(cmd[0], "get")){
+        *rescode = do_get(cmd, res, reslen);
+    } else if (cmd.size() == 3 && cmd_is(cmd[0], "set")){
+        *rescode = do_set(cmd, res, reslen);
+    } else if (cmd.size() == 2 && cmd_is(cmd[0], "del")){
+        *rescode = do_del(cmd, res, reslen);
+    } else{
+        // cmd not recognized
+        *rescode = RES_ERR;
+        const char *msg = "unknown cmd!!!";
+        strcpy((char*)res, msg);
+        *reslen = strlen(msg);
+        return 0;
+    }
+    return 0;
+}
+
 static bool try_one_request(Conn *conn) {
     // try to parse request from the buffer
     if (conn->rbuf_size < 4) {
@@ -260,7 +287,8 @@ static bool try_one_request(Conn *conn) {
     // printf("client says: %.*s\n", len, &conn->rbuf[4]);
     uint32_t rescode = 0;
     uint32_t wlen = 0;
-    int32_t err = do_request();
+    int32_t err = do_request(&conn->rbuf[4], len, &rescode, 
+                &conn->wbuf[4+4], &wlen);
 
     if (err) {
         conn->state = STATE_EMD;
