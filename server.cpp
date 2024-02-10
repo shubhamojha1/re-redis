@@ -156,6 +156,7 @@ static int32_t read_full(SOCKET fd, char *buf, size_t n) {
         //     return -1; // error or unexpected EOF
         // }
         if (rv == 0) {
+            fprintf(stderr, "EOF received\n");
             return -2;
         } else if(rv < 0) {
             // An error occurred
@@ -163,6 +164,7 @@ static int32_t read_full(SOCKET fd, char *buf, size_t n) {
             fprintf(stderr, "recv failed with error: %d\n", err);
             return -1;
         }
+        fprintf(stderr, "Received %d bytes\n", rv); // Debugging statement
         assert((size_t)rv <= n);
         n -= (size_t)rv;
         buf += rv;
@@ -255,12 +257,21 @@ static bool try_one_request(Conn *conn) {
     }
 
     // got one request, do something with it
-    printf("client says: %.*s\n", len, &conn->rbuf[4]);
+    // printf("client says: %.*s\n", len, &conn->rbuf[4]);
+    uint32_t rescode = 0;
+    uint32_t wlen = 0;
+    int32_t err = do_request();
 
+    if (err) {
+        conn->state = STATE_EMD;
+        return false;
+    }
+    wlen += 4;
+    
     // generating echoing response
-    memcpy(&conn->wbuf[0], &len, 4);
-    memcpy(&conn->wbuf[4], &conn->rbuf, len);
-    conn->wbuf_size = 4 + len;
+    // memcpy(&conn->wbuf[0], &len, 4);
+    // memcpy(&conn->wbuf[4], &conn->rbuf, len);
+    // conn->wbuf_size = 4 + len;
 
     // remove the request from buffer
     /**
@@ -268,6 +279,10 @@ static bool try_one_request(Conn *conn) {
             need better handling for production code
      * 
      */
+    memcpy(&conn->wbuf[0], &wlen, 4);
+    memcpy(&conn->wbuf[4], &rescode, 4);
+    conn->wbuf_size = 4 + len;
+
     size_t remain = conn->rbuf_size - 4 - len;
     if (remain) {
         memmove(conn->rbuf, &conn->rbuf[4 + len], remain);
@@ -410,7 +425,7 @@ int main(){
     sockaddr_in service;
     service.sin_family = AF_INET;
     service.sin_addr.s_addr = inet_addr("127.0.0.1");
-    service.sin_port = htons(9376);
+    service.sin_port = htons(1234);
     if (bind(fd, (SOCKADDR*)&service, sizeof(service)) == SOCKET_ERROR) {
         die("bind() failed");
     }
@@ -439,7 +454,7 @@ int main(){
 
     while (true) {
         // accept connection
-        printf("-----\nSERVER RUNNING\n-----\n");
+        // printf("-----\nSERVER RUNNING\n-----\n");
 
         // struct sockaddr_in client_addr = {};
         // // socklen_t socklen = sizeof(client_addr);
