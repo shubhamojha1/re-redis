@@ -279,11 +279,22 @@ enum {
 
 static std::map<std::string, std::string> g_map;
 
-static uint32_t do_get()
+static uint32_t do_get(const std::vector<std::string> &cmd, uint8_t *res, uint32_t *reslen){
+    if(!g_map.count(cmd[1]))
+        return RES_NX;
 
-static uint32_t do_set()
+    std::string &val = g_map[cmd[1]];
+    assert(val.size() <= K_MAX_MSG);
 
-static uint32_t do_del()
+    memcpy(res, val.data(), val.size());
+    *reslen = (uint32_t)val.size();
+
+    return RES_OK;
+}
+
+static uint32_t do_set(const std::vector<std::string> &cmd, uint8_t *res, uint32_t *reslen)
+
+static uint32_t do_del(const std::vector<std::string> &cmd, uint8_t *res, uint32_t *reslen)
 
 // 3 commands:  (get, set, del)
 static int32_t do_request(
