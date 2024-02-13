@@ -238,6 +238,53 @@ static int32_t one_request(SOCKET connfd){ // (int connfd)
     return write_all(connfd, wbuf, 4 + len);
 }
 
+const size_t K_MAX_ARGS = 1024;
+
+static int32_t parse_req(const uint8_t *data, size_t len, 
+                        std::vector<std::string> &out){
+    // parsing command
+    if (len < 4)
+        return -1;
+    uint32_t n = 0;
+    memcpy(&n, &data[0], 4);
+
+    if (n > K_MAX_ARGS)
+        return -1;
+
+    size_t pos = 4;
+    while (n--){
+        if(pos+4 > len){
+            return -1;
+        }
+        uint32_t sz = 0;
+        memcpy(&sz, &data[pos], 4);
+        if (pos + 4 + sz > len) {
+            return -1;
+        }
+        out.push_back(std::string((char*)&data[pos+4], sz));
+        pos += 4+sz;
+    }
+
+    if (pos != len)
+        return -1;
+
+    return 0;
+}
+
+enum {
+    RES_OK = 0,
+    RES_ERR = 1,
+    RES_NX = 2,
+};
+
+static std::map<std::string, std::string> g_map;
+
+static uint32_t do_get()
+
+static uint32_t do_set()
+
+static uint32_t do_del()
+
 // 3 commands:  (get, set, del)
 static int32_t do_request(
     const uint8_t *req, uint32_t reqlen,
