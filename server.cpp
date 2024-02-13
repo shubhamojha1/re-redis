@@ -300,7 +300,13 @@ static uint32_t do_set(const std::vector<std::string> &cmd, uint8_t *res, uint32
     return RES_OK;
 }
 
-static uint32_t do_del(const std::vector<std::string> &cmd, uint8_t *res, uint32_t *reslen)
+static uint32_t do_del(const std::vector<std::string> &cmd, uint8_t *res, uint32_t *reslen){
+    (void)res;
+    (void)reslen;
+
+    g_map.erase(cmd[1]);
+    return RES_OK;
+}
 
 // 3 commands:  (get, set, del)
 static int32_t do_request(
