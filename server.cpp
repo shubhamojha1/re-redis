@@ -292,7 +292,13 @@ static uint32_t do_get(const std::vector<std::string> &cmd, uint8_t *res, uint32
     return RES_OK;
 }
 
-static uint32_t do_set(const std::vector<std::string> &cmd, uint8_t *res, uint32_t *reslen)
+static uint32_t do_set(const std::vector<std::string> &cmd, uint8_t *res, uint32_t *reslen){
+    (void)res;
+    (void)reslen;
+
+    g_map[cmd[1]] = cmd[2];
+    return RES_OK;
+}
 
 static uint32_t do_del(const std::vector<std::string> &cmd, uint8_t *res, uint32_t *reslen)
 
