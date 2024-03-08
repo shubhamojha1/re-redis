@@ -15,39 +15,17 @@
 #include <unistd.h>
 #include <assert.h>
 #include <vector>
+#include <map>
+#include <string>
 // For Unix/Linux
 // #include <arpa/inet.h> 
 // #include <sys/socket.h>
 // #include <netinet/ip.h>
 // #include <poll.h>
 
-
 // Link with ws2_32.lib 
 // for networking functionality in Windows
 #pragma comment(lib, "Ws2_32.lib")
-
-const size_t K_MAX_MSG = 4096;
-
-enum {
-    STATE_REQ = 0,
-    STATE_RES = 1,
-    STATE_END = 2, // mark the connection for deletion
-};
-
-struct Conn {
-    int fd = -1;
-    uint32_t state = 0; // either STATE_REQ or STATE_RES
-    // buffer for reading
-    size_t rbuf_size = 0;
-    uint8_t rbuf[4 + K_MAX_MSG];
-    // buffer for writing
-    size_t wbuf_size = 0;
-    size_t wbuf_sent = 0;
-    uint8_t wbuf[4 + K_MAX_MSG];
-};
-
-static void state_req(Conn *conn);
-static void state_res(Conn *conn);
 
 // For logging non-fatal messages
 static void msg (const char *msg){
@@ -59,7 +37,7 @@ static void die(const char *msg){
     // int err = errno;
     int err = WSAGetLastError();
     fprintf(stderr, "[%d] %s\n", err, msg);
-    WSACleanup(); // terminates use of the Winsock 2 DLL by cleaning resources
+    WSACleanup(); // terminates use of the Winsock2 DLL by cleaning resources
     // abort();
     exit(EXIT_FAILURE); // Exit the program
 }
@@ -80,18 +58,44 @@ static void fd_set_nb(SOCKET fd) {
     //     die("fcntl error");
     // }
 
-    u_long mode = 1;
+    u_long mode = 1; // 1 for non-blocking mode
     if (ioctlsocket(fd, FIONBIO, &mode) == SOCKET_ERROR) {
         die("Failed to set non-blocking mode for socket");
     }
 }
 
+const size_t K_MAX_MSG = 4096;
+
+enum {
+    STATE_REQ = 0,
+    STATE_RES = 1,
+    STATE_END = 2, // mark the connection for deletion
+};
+
+struct Conn {
+    // int fd = -1;
+    SOCKET fd = INVALID_SOCKET; 
+    uint32_t state = 0; // either STATE_REQ or STATE_RES
+    // buffer for reading
+    size_t rbuf_size = 0;
+    uint8_t rbuf[4 + K_MAX_MSG];
+    // buffer for writing
+    size_t wbuf_size = 0;
+    size_t wbuf_sent = 0;
+    short events = 0;
+    uint8_t wbuf[4 + K_MAX_MSG];
+};
+
 static void conn_put(std::vector<Conn *> &fd2conn, struct Conn *conn) {
-    if (fd2conn.size() <= (size_t)conn->fd) {
-        fd2conn.resize(conn->fd+1); // resize vector
+    if (fd2conn.size() <= (size_t)conn->socket) {
+        fd2conn.resize(conn->socket + 1); // resize vector
     }
-    fd2conn[conn->fd] = conn; // put connection
+    fd2conn[conn->socket] = conn; // put connection
 }
+
+static void state_req(Conn *conn);
+static void state_res(Conn *conn);
+
 
 static int32_t accept_new_conn(std::vector<Conn *> &fd2conn, SOCKET fd) {
     struct sockaddr_in client_addr = {};
@@ -105,8 +109,8 @@ static int32_t accept_new_conn(std::vector<Conn *> &fd2conn, SOCKET fd) {
     // set the new connection fd to nonblocking mode
     fd_set_nb(connfd); 
     // creating the struct Conn
-    // struct Conn *conn = (struct Conn *)malloc(sizeof(struct Conn));
-    struct Conn *conn = new Conn;
+    struct Conn *conn = (struct Conn *)malloc(sizeof(struct Conn));
+    // struct Conn *conn = new Conn;
     if (!conn) {
         close(connfd);
         return -1;
@@ -155,6 +159,7 @@ static int32_t read_full(SOCKET fd, char *buf, size_t n) {
         // if (rv <= 0) {
         //     return -1; // error or unexpected EOF
         // }
+        printf("recv----> %d", rv);
         if (rv == 0) {
             fprintf(stderr, "EOF received\n");
             return -2;
@@ -164,7 +169,7 @@ static int32_t read_full(SOCKET fd, char *buf, size_t n) {
             fprintf(stderr, "recv failed with error: %d\n", err);
             return -1;
         }
-        fprintf(stderr, "Received %d bytes\n", rv); // Debugging statement
+        fprintf(stderr, "Received %d bytes\n", rv); // Debugging
         assert((size_t)rv <= n);
         n -= (size_t)rv;
         buf += rv;
@@ -293,7 +298,7 @@ static uint32_t do_get(const std::vector<std::string> &cmd, uint8_t *res, uint32
 }
 
 static uint32_t do_set(const std::vector<std::string> &cmd, uint8_t *res, uint32_t *reslen){
-    (void)res;
+    (void)res; // to suppress unused variables warning
     (void)reslen;
 
     g_map[cmd[1]] = cmd[2];
@@ -301,11 +306,15 @@ static uint32_t do_set(const std::vector<std::string> &cmd, uint8_t *res, uint32
 }
 
 static uint32_t do_del(const std::vector<std::string> &cmd, uint8_t *res, uint32_t *reslen){
-    (void)res;
+    (void)res; // to suppress unused variables warning
     (void)reslen;
 
     g_map.erase(cmd[1]);
     return RES_OK;
+}
+
+static bool cmd_is(const std::string &word, const char *cmd) {
+    return 0 == strcasecmp(word.c_str(), cmd);
 }
 
 // 3 commands:  (get, set, del)
@@ -361,7 +370,7 @@ static bool try_one_request(Conn *conn) {
                 &conn->wbuf[4+4], &wlen);
 
     if (err) {
-        conn->state = STATE_EMD;
+        conn->state = STATE_END;
         return false;
     }
     wlen += 4;
@@ -388,7 +397,7 @@ static bool try_one_request(Conn *conn) {
     conn->rbuf_size = remain;
 
     // change state
-    conn->state - STATE_RES;
+    conn->state = STATE_RES;
     state_res(conn);
 
     // continue outer loop if the request was fully processed
@@ -400,8 +409,9 @@ static bool try_fill_buffer(Conn *conn) {
     assert(conn->rbuf_size < sizeof(conn->rbuf));
     ssize_t rv = 0;
     do {
-        size_t cap = sizeof(conn-> rbuf) - conn-> rbuf_size;
+        size_t cap = sizeof(conn-> rbuf) - conn->rbuf_size;
         rv = recv(conn->fd, (char *)&conn->rbuf[conn->rbuf_size], cap, 0);
+        // rv = recv(conn->fd, &conn->rbuf[conn->rbuf_size], cap, 0);
     } while(rv < 0 && WSAGetLastError() == WSAEINTR);
 
     if (rv < 0) {
@@ -433,6 +443,7 @@ static bool try_flush_buffer(Conn *conn) {
     do {
         ssize_t remain = conn->wbuf_size - conn->wbuf_sent;
         rv = send(conn->fd, (char *)&conn->wbuf[conn->wbuf_sent], remain, 0);
+        // rv = send(conn->fd, &conn->wbuf[conn->wbuf_sent], remain, 0);
         
     } while (rv < 0 && errno == WSAEINTR);
 
@@ -552,7 +563,7 @@ int main(){
 
     while (true) {
         // accept connection
-        // printf("-----\nSERVER RUNNING\n-----\n");
+        printf("-----\nSERVER RUNNING\n-----\n");
 
         // struct sockaddr_in client_addr = {};
         // // socklen_t socklen = sizeof(client_addr);
@@ -592,7 +603,7 @@ int main(){
     // WSACleanup();
 
     // ----- EVENT LOOP IMPLEMENTATION -----
-
+    
     // prepare args of the poll()
         poll_args.clear();
         // listening fd put in first position, for convenience
@@ -603,6 +614,9 @@ int main(){
         // listen_sock_pollfd.events = POLLIN;
         poll_args.push_back(listen_sock_pollfd);
         
+        printf("(1) poll_args: ");
+        for(int i=0;i<poll_args.size();i++)
+            printf("%d \n", poll_args[i]);
         // connection fds
         for (Conn *conn: fd2conn) {
             if(!conn) {
@@ -619,7 +633,9 @@ int main(){
             // POLLERR (unix) <-> FD_CLOSE (windows)
             poll_args.push_back(pfd);
         }
-
+        printf("(2) poll_args: ");
+        for(int i=0;i<poll_args.size();i++)
+            printf("%d \n", poll_args[i]);
         // poll for active fds
         // timeout arg not important (need to check)
         int timeout = 1000;
@@ -629,9 +645,9 @@ int main(){
         // if (rv < 0) {
         //     die("WSAPoll failed");
         // }
-         fd_set readSet;
-         FD_ZERO(&readSet);
-         FD_SET(fd, &readSet);
+        fd_set readSet;
+        FD_ZERO(&readSet);
+        FD_SET(fd, &readSet);
 
         struct timeval tv;
         tv.tv_sec = 10;
@@ -651,7 +667,8 @@ int main(){
                     // destroy connection
                     fd2conn[conn->fd] = NULL;
                     (void)close(conn->fd);
-                    free(conn);
+                    // free(conn);
+                    delete conn;
                 }
             }
         }
