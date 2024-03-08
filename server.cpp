@@ -93,30 +93,35 @@ static void conn_put(std::vector<Conn *> &fd2conn, struct Conn *conn) {
     fd2conn[conn->socket] = conn; // put connection
 }
 
-static void state_req(Conn *conn);
-static void state_res(Conn *conn);
-
-
 static int32_t accept_new_conn(std::vector<Conn *> &fd2conn, SOCKET fd) {
     struct sockaddr_in client_addr = {};
     int socklen = sizeof(client_addr);
     SOCKET connfd = accept(fd, (struct sockaddr *)&client_addr, &socklen); // accept 
     if (connfd == INVALID_SOCKET) {
-        msg("accept() error");
-        return -1;
+        // msg("accept() error");
+        // return -1;
+
+        int error = WSAGetLastError();
+        if (error == WSAEWOULDBLOCK){
+            return -1;
+        }else{
+            die("accept() error");
+            return -1;
+        }
     }
 
     // set the new connection fd to nonblocking mode
     fd_set_nb(connfd); 
+
     // creating the struct Conn
     struct Conn *conn = (struct Conn *)malloc(sizeof(struct Conn));
     // struct Conn *conn = new Conn;
     if (!conn) {
-        close(connfd);
+        closesocket(connfd);
         return -1;
     }
 
-    conn->fd = connfd;
+    conn->socket = connfd;
     conn->state = STATE_REQ;
     conn->rbuf_size = 0;
     conn->wbuf_size = 0;
@@ -152,104 +157,18 @@ static int32_t accept_new_conn(std::vector<Conn *> &fd2conn, SOCKET fd) {
 //     }
 // }
 
-static int32_t read_full(SOCKET fd, char *buf, size_t n) {
-    while (n > 0) {
-        // ssize_t rv = read(fd, buf, n);
-        int rv = recv(fd, buf, n, 0);
-        // if (rv <= 0) {
-        //     return -1; // error or unexpected EOF
-        // }
-        printf("recv----> %d", rv);
-        if (rv == 0) {
-            fprintf(stderr, "EOF received\n");
-            return -2;
-        } else if(rv < 0) {
-            // An error occurred
-            int err = WSAGetLastError();
-            fprintf(stderr, "recv failed with error: %d\n", err);
-            return -1;
-        }
-        fprintf(stderr, "Received %d bytes\n", rv); // Debugging
-        assert((size_t)rv <= n);
-        n -= (size_t)rv;
-        buf += rv;
-    }
-    return 0;
-}
-
-
-static int32_t write_all(SOCKET fd, const char *buf, size_t n) { // (int fd)
-    while (n > 0){
-        // ssize_t rv = write(fd, buf, n);
-        int rv = send(fd, buf, n, 0);
-        if (rv <= 0) {
-            return -1;
-        }
-        assert((size_t)rv <= n);
-        n -= (size_t)rv;
-        buf += rv;
-    }
-    return 0;
-}
-
-// Request format
-//  +-----+------+-----+------+-------
-// | len | msg1 | len | msg2 | more...
-//  +-----+------+-----+------+-------
-static int32_t one_request(SOCKET connfd){ // (int connfd)
-    // 4 bytes header
-    char rbuf[4 + K_MAX_MSG + 1]; // size of one request
-    // errno = 0;
-    int32_t err = read_full(connfd, rbuf, 4);
-    if (err == -2) {
-        return -2;
-        // msg(" --> read_full() error");
-        // if (errno == 0) {
-        //     msg("EOF");
-        // } else {
-        //     msg("read() error");
-        // }
-        // return err;
-    } else if (err) {
-        return err;
-    }
-
-    uint32_t len = 0;
-    memcpy(&len, rbuf, 4); // assume little endian
-    // printf("len--> %d\n", len);
-    if (len > K_MAX_MSG) {
-        msg("too long");
-        return -1;
-    }
-
-    err = read_full(connfd, &rbuf[4], len);
-    if (err) {
-        msg("read() error");
-        return err;
-    }
-    
-
-    // request body
-    rbuf[4 + len] = '\0';
-    printf("client says: %s\n", &rbuf[4]);
-
-    // reply using same protocol
-    const char reply[] = "world";
-    char wbuf[2 + sizeof(reply)];
-    len = (uint32_t)strlen(reply);
-    memcpy(wbuf, &len, 4);
-    memcpy(&wbuf[4], reply, len);
-
-    return write_all(connfd, wbuf, 4 + len);
-}
+static void state_req(Conn *conn);
+static void state_res(Conn *conn);
 
 const size_t K_MAX_ARGS = 1024;
 
 static int32_t parse_req(const uint8_t *data, size_t len, 
                         std::vector<std::string> &out){
     // parsing command
-    if (len < 4)
+    if (len < 4){
         return -1;
+    }
+
     uint32_t n = 0;
     memcpy(&n, &data[0], 4);
 
@@ -281,6 +200,99 @@ enum {
     RES_ERR = 1,
     RES_NX = 2,
 };
+
+// static int32_t read_full(SOCKET fd, char *buf, size_t n) {
+//     while (n > 0) {
+//         // ssize_t rv = read(fd, buf, n);
+//         int rv = recv(fd, buf, n, 0);
+//         // if (rv <= 0) {
+//         //     return -1; // error or unexpected EOF
+//         // }
+//         printf("recv----> %d", rv);
+//         if (rv == 0) {
+//             fprintf(stderr, "EOF received\n");
+//             return -2;
+//         } else if(rv < 0) {
+//             // An error occurred
+//             int err = WSAGetLastError();
+//             fprintf(stderr, "recv failed with error: %d\n", err);
+//             return -1;
+//         }
+//         fprintf(stderr, "Received %d bytes\n", rv); // Debugging
+//         assert((size_t)rv <= n);
+//         n -= (size_t)rv;
+//         buf += rv;
+//     }
+//     return 0;
+// }
+
+
+// static int32_t write_all(SOCKET fd, const char *buf, size_t n) { // (int fd)
+//     while (n > 0){
+//         // ssize_t rv = write(fd, buf, n);
+//         int rv = send(fd, buf, n, 0);
+//         if (rv <= 0) {
+//             return -1;
+//         }
+//         assert((size_t)rv <= n);
+//         n -= (size_t)rv;
+//         buf += rv;
+//     }
+//     return 0;
+// }
+
+// Request format
+//  +-----+------+-----+------+-------
+// | len | msg1 | len | msg2 | more...
+//  +-----+------+-----+------+-------
+// static int32_t one_request(SOCKET connfd){ // (int connfd)
+//     // 4 bytes header
+//     char rbuf[4 + K_MAX_MSG + 1]; // size of one request
+//     // errno = 0;
+//     int32_t err = read_full(connfd, rbuf, 4);
+//     if (err == -2) {
+//         return -2;
+//         // msg(" --> read_full() error");
+//         // if (errno == 0) {
+//         //     msg("EOF");
+//         // } else {
+//         //     msg("read() error");
+//         // }
+//         // return err;
+//     } else if (err) {
+//         return err;
+//     }
+
+//     uint32_t len = 0;
+//     memcpy(&len, rbuf, 4); // assume little endian
+//     // printf("len--> %d\n", len);
+//     if (len > K_MAX_MSG) {
+//         msg("too long");
+//         return -1;
+//     }
+
+//     err = read_full(connfd, &rbuf[4], len);
+//     if (err) {
+//         msg("read() error");
+//         return err;
+//     }
+    
+
+//     // request body
+//     rbuf[4 + len] = '\0';
+//     printf("client says: %s\n", &rbuf[4]);
+
+//     // reply using same protocol
+//     const char reply[] = "world";
+//     char wbuf[2 + sizeof(reply)];
+//     len = (uint32_t)strlen(reply);
+//     memcpy(wbuf, &len, 4);
+//     memcpy(&wbuf[4], reply, len);
+
+//     return write_all(connfd, wbuf, 4 + len);
+// }
+
+
 
 static std::map<std::string, std::string> g_map;
 
