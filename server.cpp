@@ -74,7 +74,7 @@ enum {
 
 struct Conn {
     // int fd = -1;
-    SOCKET fd = INVALID_SOCKET; 
+    SOCKET socket = INVALID_SOCKET; // SOCKET socket = INVALID_SOCKET
     uint32_t state = 0; // either STATE_REQ or STATE_RES
     // buffer for reading
     size_t rbuf_size = 0;
@@ -321,6 +321,18 @@ static uint32_t do_del(const std::vector<std::string> &cmd, uint8_t *res, uint32
     (void)res; // to suppress unused variables warning
     (void)reslen;
 
+    // include for extra verbosity
+    // need to comment out (void) res; above to make it work
+    // size_t count = g_map.erase(cmd[1]);
+    // if (count > 0){
+    //     const char *msg = "OK";
+    // } else {
+    //     const char *msg = "NX";
+    // }
+
+    // strcpy((char *)res, msg);
+    //     *reslen = strlen(msg);
+
     g_map.erase(cmd[1]);
     return RES_OK;
 }
@@ -422,7 +434,7 @@ static bool try_fill_buffer(Conn *conn) {
     ssize_t rv = 0;
     do {
         size_t cap = sizeof(conn-> rbuf) - conn->rbuf_size;
-        rv = recv(conn->fd, (char *)&conn->rbuf[conn->rbuf_size], cap, 0);
+        rv = recv(conn->socket, (char *)&conn->rbuf[conn->rbuf_size], cap, 0);
         // rv = recv(conn->fd, &conn->rbuf[conn->rbuf_size], cap, 0);
     } while(rv < 0 && WSAGetLastError() == WSAEINTR);
 
